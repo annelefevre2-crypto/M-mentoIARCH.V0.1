@@ -687,45 +687,82 @@ function generateJsonAndQr() {
     return;
   }
 
-  const ficheObject = {
+   const ficheObject = {
     categorie: categorie || undefined,
-    titre: titre,
-    objectif: objectif,
-    variables: variables,
-    prompt: prompt,
+    titre,
+    objectif,
+    variables,
+    prompt,
     indices_confiance: {
       chatgpt: Number(indiceChatgpt),
       perplexity: Number(indicePerplexity),
       mistral: Number(indiceMistral)
     },
-    concepteur: concepteur,
+    concepteur,
     date_maj: dateMaj || undefined,
-    version: version
+    version
   };
 
+  // 1) Version "lisible" pour la zone JSON généré
   const cleaned = removeUndefined(ficheObject);
-
   const jsonFormatted = JSON.stringify(cleaned, null, 2);
   jsonTextarea.value = jsonFormatted;
 
-  const jsonMinified = JSON.stringify(cleaned);
+  // 2) Version "compacte" pour le QR code
+  const compact = {
+    c: cleaned.categorie,
+    ti: cleaned.titre,
+    obj: cleaned.objectif,
+    v: Array.isArray(cleaned.variables)
+      ? cleaned.variables.map((v) => ({
+          i: v.id,
+          l: v.label,
+          t: v.type,
+          o: v.obligatoire
+        }))
+      : [],
+    pr: cleaned.prompt,
+    ic: cleaned.indices_confiance
+      ? {
+          c: cleaned.indices_confiance.chatgpt,
+          p: cleaned.indices_confiance.perplexity,
+          m: cleaned.indices_confiance.mistral
+        }
+      : undefined,
+    cp: cleaned.concepteur,
+    d: cleaned.date_maj,
+    ve: cleaned.version
+  };
+
+  const compactCleaned = removeUndefined(compact);
+  const jsonMinified = JSON.stringify(compactCleaned); // <- c'est CE JSON qui va dans le QR
 
   if (typeof QRCode !== "function") {
-    alert(
-      "La librairie QRCode n'est pas disponible. Vérifiez le chargement du script qrcodejs."
-    );
+    alert("La librairie QRCode n'est pas disponible.");
     return;
   }
 
-  qrContainer.innerHTML = "";
-  new QRCode("generatedQr", {
-    text: jsonMinified,
-    width: 200,
-    height: 200
-  });
+  try {
+    new QRCode(qrContainer, {
+      text: jsonMinified,
+      width: 200,
+      height: 200,
+      correctLevel: QRCode.CorrectLevel.L
+    });
+    downloadBtn.disabled = false;
+  } catch (e) {
+    console.error("Erreur génération QR :", e);
+    if (String(e).includes("code length overflow")) {
+      errorBox.textContent =
+        "Le contenu de la fiche est trop volumineux pour être encodé dans un QR code. " +
+        "Réduisez la taille des textes (objectif, prompt, nombre de variables…) puis réessayez.";
+    } else {
+      errorBox.textContent =
+        "Erreur lors de la génération du QR code : " + e.message;
+    }
+    errorBox.hidden = false;
+  }
 
-  downloadBtn.disabled = false;
-}
 
 // Téléchargement de l'image du QR code généré
 function downloadGeneratedQr() {
