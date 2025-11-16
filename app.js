@@ -1,47 +1,30 @@
 // ======================================================
 // Mémento opérationnel IA – RCH
-// app.js
+// app.js — Version 0.2
 // ------------------------------------------------------
-// Logique principale de l'application :
-//  - gestion des onglets (scan / création)
-//  - scan QR (caméra + image) via html5-qrcode
-//  - parsing JSON et génération dynamique du formulaire
-//  - construction du prompt final
-//  - gestion des boutons IA et ouverture vers les sites
-//  - création de fiche + génération du QR code
+// Modifications par rapport à V0.1 :
+//  - libellé de l'onglet création : "Création de fiche"
+//  - ajout d'un en-tête de colonnes pour les variables
+//  - correction de la génération du QR code (utilisation de l'id "generatedQr")
 // ------------------------------------------------------
 
 // =============================
 // Variables globales
 // =============================
 
-// Référence vers l'instance html5-qrcode (caméra)
-let html5QrCode = null;
-
-// Indique si le scan caméra est actif
-let isCameraRunning = false;
-
-// Fiche courante (objet JSON issu du QR)
-let currentFiche = null;
-
-// Valeurs courantes saisies pour les variables
-let currentVariablesValues = {};
-
-// Référence au QRCode généré (pour la partie création)
-let generatedQrInstance = null;
+let html5QrCode = null;          // Instance html5-qrcode pour la caméra
+let isCameraRunning = false;     // Indique si la caméra est active
+let currentFiche = null;         // Fiche courante (JSON issu du QR)
+let currentVariablesValues = {}; // Valeurs saisies des variables
+let generatedQrInstance = null;  // Instance QRCode (création de fiche)
 
 // =============================
 // Initialisation au chargement
 // =============================
 
 document.addEventListener("DOMContentLoaded", () => {
-  // Gestion des onglets
   initTabs();
-
-  // Gestion des boutons de la vue "scan"
   initScanView();
-
-  // Gestion de la vue "création de fiche"
   initCreateView();
 });
 
@@ -57,11 +40,9 @@ function initTabs() {
     btn.addEventListener("click", () => {
       const target = btn.getAttribute("data-tab");
 
-      // Active le bouton cliqué
       tabButtons.forEach((b) => b.classList.remove("tab-button--active"));
       btn.classList.add("tab-button--active");
 
-      // Affiche le panel correspondant
       tabPanels.forEach((panel) => {
         if (panel.id === `tab-${target}`) {
           panel.classList.add("tab-panel--active");
@@ -89,25 +70,20 @@ function initScanView() {
   const btnPerplexity = document.getElementById("btnPerplexity");
   const btnMistral = document.getElementById("btnMistral");
 
-  // Bouton "Activer la caméra" : démarre la capture vidéo
   cameraBtn.addEventListener("click", () => {
     startCameraScan();
   });
 
-  // Bouton "Scanner QR Code" : si la caméra tourne déjà, ne fait rien de plus
-  // (on garde ce bouton pour coller à la maquette, il pourra servir à forcer un re-start si besoin)
   scanBtn.addEventListener("click", () => {
     if (!isCameraRunning) {
       startCameraScan();
     }
   });
 
-  // Réinitialisation complète
   resetBtn.addEventListener("click", () => {
     resetScanView();
   });
 
-  // Import d'une image de QR
   qrFileInput.addEventListener("change", (event) => {
     const file = event.target.files[0];
     if (file) {
@@ -115,22 +91,18 @@ function initScanView() {
     }
   });
 
-  // Remise à jour du prompt et des boutons IA quand les infos complémentaires changent
   infosComplementaires.addEventListener("input", () => {
     updatePromptPreview();
   });
 
-  // Bouton "Générer le prompt"
   generatePromptBtn.addEventListener("click", () => {
     updatePromptPreview(true);
   });
 
-  // Clic sur les boutons IA
   btnChatgpt.addEventListener("click", () => openIa("chatgpt"));
   btnPerplexity.addEventListener("click", () => openIa("perplexity"));
   btnMistral.addEventListener("click", () => openIa("mistral"));
 
-  // Initialisation des boutons IA en état désactivé
   setIaButtonsState(null);
 }
 
@@ -145,45 +117,36 @@ function startCameraScan() {
 
   cameraError.hidden = true;
 
-  // Si déjà en cours, ne pas recréer
   if (isCameraRunning) return;
 
-  // Affiche la zone vidéo
   videoBox.hidden = false;
 
-  // Crée une instance si besoin
   if (!html5QrCode) {
     html5QrCode = new Html5Qrcode(cameraElementId);
   }
 
-  // Essaye de récupérer les caméras disponibles
   Html5Qrcode.getCameras()
     .then((devices) => {
       if (!devices || devices.length === 0) {
         throw new Error("Aucune caméra disponible.");
       }
 
-      // Choix : caméra arrière si possible
       const backCamera = devices.find((d) =>
         d.label.toLowerCase().includes("back")
       );
       const cameraId = backCamera ? backCamera.id : devices[0].id;
 
-      // Démarre le scan
       return html5QrCode.start(
         cameraId,
         {
           fps: 10,
           qrbox: 250
         },
-        // Callback de succès : on arrête le scan après le premier QR validé
         (decodedText) => {
           handleQrDecoded(decodedText);
           stopCameraScan();
         },
-        // Callback d'erreur sur une frame (non bloquant)
         (errorMessage) => {
-          // On ignore les erreurs ponctuelles de lecture pour ne pas spammer l'UI
           console.debug("Erreur scan frame:", errorMessage);
         }
       );
@@ -224,7 +187,6 @@ function scanQrFromFile(file) {
   const cameraError = document.getElementById("cameraError");
   cameraError.hidden = true;
 
-  // Crée une instance temporaire pour lire le fichier
   const tempScanner = new Html5Qrcode("camera");
   tempScanner
     .scanFile(file, false)
@@ -250,18 +212,15 @@ function handleQrDecoded(decodedText) {
     json = JSON.parse(decodedText);
   } catch (e) {
     alert(
-      "Le QR code ne contient pas un JSON valide.\nDétail : " + e.message
+      "Le QR code ne contient pas un JSON valide.
+Détail : " + e.message
     );
     return;
   }
 
-  // On stocke la fiche courante
   currentFiche = json;
-
-  // On réinitialise les valeurs des variables
   currentVariablesValues = {};
 
-  // Met à jour l'interface (fiche + variables + prompt + IA)
   renderFicheMeta();
   renderVariablesForm();
   updatePromptPreview();
@@ -290,7 +249,6 @@ function renderFicheMeta() {
     version
   } = currentFiche;
 
-  // Construction d'un petit résumé lisible
   const lines = [];
   if (categorie) lines.push(`<strong>${escapeHtml(categorie)}</strong>`);
   if (titre) lines.push(`<span>${escapeHtml(titre)}</span>`);
@@ -315,7 +273,6 @@ function renderVariablesForm() {
   const container = document.getElementById("variablesContainer");
   container.innerHTML = "";
 
-  // Pas de fiche → rien à générer
   if (!currentFiche || !Array.isArray(currentFiche.variables)) {
     return;
   }
@@ -329,13 +286,11 @@ function renderVariablesForm() {
       placeholder = ""
     } = variable;
 
-    if (!id) return; // on ignore les variables sans identifiant
+    if (!id) return;
 
-    // Container global
     const fieldDiv = document.createElement("div");
     fieldDiv.className = "variable-field";
 
-    // Label
     const labelEl = document.createElement("label");
     labelEl.className = "variable-label";
     labelEl.setAttribute("for", `var-${id}`);
@@ -348,7 +303,6 @@ function renderVariablesForm() {
       labelEl.appendChild(star);
     }
 
-    // Input adapté au type
     let inputEl;
     if (type === "number") {
       inputEl = document.createElement("input");
@@ -357,7 +311,6 @@ function renderVariablesForm() {
       inputEl = document.createElement("input");
       inputEl.type = "file";
     } else {
-      // text, geoloc, etc. → input texte simple
       inputEl = document.createElement("input");
       inputEl.type = "text";
     }
@@ -367,7 +320,6 @@ function renderVariablesForm() {
     inputEl.dataset.varObligatoire = String(obligatoire);
     inputEl.placeholder = placeholder || "";
 
-    // Mise à jour du modèle et du prompt à chaque modification
     inputEl.addEventListener("input", () => {
       currentVariablesValues[id] =
         inputEl.type === "file"
@@ -376,7 +328,6 @@ function renderVariablesForm() {
       updatePromptPreview();
     });
 
-    // Ajout dans le DOM
     fieldDiv.appendChild(labelEl);
     fieldDiv.appendChild(inputEl);
     container.appendChild(fieldDiv);
@@ -394,21 +345,21 @@ function buildPrompt() {
 
   let prompt = currentFiche.prompt;
 
-  // Pour chaque variable, on remplace {{id}} dans le texte
   if (Array.isArray(currentFiche.variables)) {
     currentFiche.variables.forEach((v) => {
       if (!v.id) return;
       const value = currentVariablesValues[v.id] || "";
-      const placeholder = new RegExp(`{{\\s*${escapeRegex(v.id)}\\s*}}`, "g");
+      const placeholder = new RegExp(`{{\s*${escapeRegex(v.id)}\s*}}`, "g");
       prompt = prompt.replace(placeholder, value);
     });
   }
 
-  // Ajout des infos complémentaires si non vides
   const infosComplementaires = document.getElementById("infosComplementaires");
   const extra = infosComplementaires.value.trim();
   if (extra) {
-    prompt += `\n\nInformations complémentaires : ${extra}`;
+    prompt += `
+
+Informations complémentaires : ${extra}`;
   }
 
   return prompt;
@@ -420,15 +371,12 @@ function updatePromptPreview(scrollToPrompt = false) {
   const promptFinal = buildPrompt();
   compiledPrompt.value = promptFinal || "";
 
-  // Mise à jour de l'état des boutons IA selon les champs obligatoires
   const allRequiredFilled = checkAllRequiredVariablesFilled();
   if (!allRequiredFilled) {
-    // Désactive tout si les variables obligatoires ne sont pas remplies
     setIaButtonsDisableAll(
       "Veuillez remplir tous les champs obligatoires avant d'utiliser les IA."
     );
   } else {
-    // Active/désactive selon les indices de confiance
     const indices = currentFiche?.indices_confiance || null;
     setIaButtonsState(indices);
   }
@@ -453,7 +401,6 @@ function checkAllRequiredVariablesFilled() {
 // Gestion des boutons IA
 // ------------------------------------------------------
 
-// Désactive tous les boutons IA avec un message en console
 function setIaButtonsDisableAll(reason) {
   const btnChatgpt = document.getElementById("btnChatgpt");
   const btnPerplexity = document.getElementById("btnPerplexity");
@@ -470,19 +417,16 @@ function setIaButtonsDisableAll(reason) {
   }
 }
 
-// Met à jour l'état des boutons IA selon les indices de confiance
 function setIaButtonsState(indices) {
   const btnChatgpt = document.getElementById("btnChatgpt");
   const btnPerplexity = document.getElementById("btnPerplexity");
   const btnMistral = document.getElementById("btnMistral");
 
-  // Aucune fiche → tout désactiver
   if (!currentFiche || !indices) {
     setIaButtonsDisableAll();
     return;
   }
 
-  // Fonction utilitaire interne pour configurer chaque bouton
   const applyState = (btn, level) => {
     btn.classList.remove("btn-ia--level3", "btn-ia--level2", "btn-ia--disabled");
 
@@ -493,7 +437,6 @@ function setIaButtonsState(indices) {
       btn.disabled = false;
       btn.classList.add("btn-ia--level2");
     } else {
-      // Niveau 1 ou valeur invalide → désactivé
       btn.disabled = true;
       btn.classList.add("btn-ia--disabled");
     }
@@ -508,14 +451,13 @@ function setIaButtonsState(indices) {
   applyState(btnMistral, levelMistral);
 }
 
-// Indice → 1/2/3
 function normalizeIndice(value) {
   const n = Number(value);
   if (n === 3 || n === 2 || n === 1) return n;
   return 1;
 }
 
-// Ouverture de l'IA sélectionnée avec le prompt pré-rempli (si possible)
+// Ouverture de l'IA sélectionnée avec le prompt pré-rempli
 function openIa(iaKey) {
   if (!currentFiche) return;
 
@@ -551,14 +493,11 @@ function openIa(iaKey) {
 // ------------------------------------------------------
 
 function resetScanView() {
-  // Arrêt de la caméra
   stopCameraScan();
 
-  // Reset modèle
   currentFiche = null;
   currentVariablesValues = {};
 
-  // Reset UI
   document.getElementById("ficheMeta").textContent = "Aucune fiche scannée";
   document.getElementById("ficheMeta").classList.add("fiche-meta--empty");
   document.getElementById("variablesContainer").innerHTML = "";
@@ -584,7 +523,6 @@ function initCreateView() {
   const generateQrBtn = document.getElementById("generateQrBtn");
   const downloadQrBtn = document.getElementById("downloadQrBtn");
 
-  // Ajout d'une première ligne de variable par défaut
   addVariableRow();
 
   addVariableBtn.addEventListener("click", () => {
@@ -613,17 +551,14 @@ function addVariableRow() {
   const row = document.createElement("div");
   row.className = "variable-row";
 
-  // Input : label (nom affiché)
   const inputLabel = document.createElement("input");
   inputLabel.type = "text";
   inputLabel.placeholder = "Label (ex : Code ONU)";
 
-  // Input : id (utilisé dans le JSON et le prompt)
   const inputId = document.createElement("input");
   inputId.type = "text";
   inputId.placeholder = "Identifiant (ex : code_onu)";
 
-  // Select : type
   const selectType = document.createElement("select");
   ["text", "number", "geoloc", "file"].forEach((t) => {
     const opt = document.createElement("option");
@@ -632,7 +567,6 @@ function addVariableRow() {
     selectType.appendChild(opt);
   });
 
-  // Champ "obligatoire" (checkbox)
   const requiredContainer = document.createElement("div");
   requiredContainer.className = "var-required";
 
@@ -645,7 +579,6 @@ function addVariableRow() {
   requiredContainer.appendChild(checkboxRequired);
   requiredContainer.appendChild(labelRequired);
 
-  // Bouton suppression
   const deleteBtn = document.createElement("button");
   deleteBtn.type = "button";
   deleteBtn.className = "btn btn-secondary";
@@ -676,7 +609,6 @@ function generateJsonAndQr() {
   qrContainer.innerHTML = "";
   downloadBtn.disabled = true;
 
-  // Récupère les champs principaux
   const categorie = document.getElementById("createCategorie").value.trim();
   const titre = document.getElementById("createTitre").value.trim();
   const objectif = document.getElementById("createObjectif").value.trim();
@@ -686,12 +618,9 @@ function generateJsonAndQr() {
   const prompt = document.getElementById("createPrompt").value;
 
   const indiceChatgpt = document.getElementById("indiceChatgpt").value;
-  const indicePerplexity = document.getElementById(
-    "indicePerplexity"
-  ).value;
+  const indicePerplexity = document.getElementById("indicePerplexity").value;
   const indiceMistral = document.getElementById("indiceMistral").value;
 
-  // Validation minimale
   const errors = [];
   if (!titre) errors.push("Le titre de la fiche est obligatoire.");
   if (!objectif) errors.push("L'objectif de la fiche est obligatoire.");
@@ -699,7 +628,6 @@ function generateJsonAndQr() {
   if (!version) errors.push("La version est obligatoire.");
   if (!prompt.trim()) errors.push("Le prompt de la fiche ne doit pas être vide.");
 
-  // Récupération des variables
   const variables = [];
   const rows = document.querySelectorAll("#variablesBuilder .variable-row");
   const ids = new Set();
@@ -717,7 +645,6 @@ function generateJsonAndQr() {
     const type = selectType.value;
     const obligatoire = checkboxRequired.checked;
 
-    // On autorise les lignes vides (non remplies) à être ignorées
     if (!label && !id) return;
 
     if (!label) {
@@ -747,7 +674,6 @@ function generateJsonAndQr() {
     return;
   }
 
-  // Construction de l'objet JSON final
   const ficheObject = {
     categorie: categorie || undefined,
     titre,
@@ -764,17 +690,22 @@ function generateJsonAndQr() {
     version
   };
 
-  // Nettoyage : supprime les clés undefined
   const cleaned = removeUndefined(ficheObject);
 
-  // Conversion en JSON (formaté pour lecture)
   const jsonFormatted = JSON.stringify(cleaned, null, 2);
   jsonTextarea.value = jsonFormatted;
 
-  // Génération du QR code (on peut minifier le JSON pour réduire la taille)
   const jsonMinified = JSON.stringify(cleaned);
 
-  generatedQrInstance = new QRCode(qrContainer, {
+  // Vérifie la présence de la librairie QRCode
+  if (typeof QRCode !== "function") {
+    alert("La librairie QRCode n'est pas disponible. Vérifiez le chargement du script qrcodejs.");
+    return;
+  }
+
+  // Génère le QR code dans l'élément dont l'id est "generatedQr"
+  qrContainer.innerHTML = "";
+  generatedQrInstance = new QRCode("generatedQr", {
     text: jsonMinified,
     width: 200,
     height: 200
@@ -803,7 +734,6 @@ function downloadGeneratedQr() {
 // Utilitaires
 // =============================
 
-// Echappe les caractères spéciaux HTML
 function escapeHtml(str) {
   return String(str)
     .replace(/&/g, "&amp;")
@@ -813,12 +743,10 @@ function escapeHtml(str) {
     .replace(/'/g, "&#039;");
 }
 
-// Echappe une chaîne pour une expression régulière
 function escapeRegex(str) {
-  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return String(str).replace(/[.*+?^${}()|[\]\]/g, "\$&");
 }
 
-// Supprime récursivement les clés dont la valeur est undefined
 function removeUndefined(obj) {
   if (Array.isArray(obj)) {
     return obj.map(removeUndefined);
