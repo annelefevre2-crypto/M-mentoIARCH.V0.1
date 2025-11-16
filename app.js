@@ -1,22 +1,16 @@
 // ======================================================
 // Mémento opérationnel IA – RCH
-// app.js — Version 0.2
+// app.js — Version 0.3.1
 // ------------------------------------------------------
-// Modifications par rapport à V0.1 :
-//  - libellé de l'onglet création : "Création de fiche"
-//  - ajout d'un en-tête de colonnes pour les variables
-//  - correction de la génération du QR code (utilisation de l'id "generatedQr")
+// - Instance unique Html5Qrcode (caméra + fichier)
+// - Scan fichier et scan caméra unifiés
+// - Création JSON + QR code (inchangée)
 // ------------------------------------------------------
 
-// =============================
-// Variables globales
-// =============================
-
-let html5QrCode = null;          // Instance html5-qrcode pour la caméra
+let html5QrCode = null;          // Instance html5-qrcode globale
 let isCameraRunning = false;     // Indique si la caméra est active
 let currentFiche = null;         // Fiche courante (JSON issu du QR)
 let currentVariablesValues = {}; // Valeurs saisies des variables
-let generatedQrInstance = null;  // Instance QRCode (création de fiche)
 
 // =============================
 // Initialisation au chargement
@@ -27,6 +21,17 @@ document.addEventListener("DOMContentLoaded", () => {
   initScanView();
   initCreateView();
 });
+
+// ------------------------------------------------------
+// Helper : s'assure qu'on a une instance Html5Qrcode
+// ------------------------------------------------------
+function ensureHtml5QrCodeInstance() {
+  const cameraElementId = "camera";
+  if (!html5QrCode) {
+    html5QrCode = new Html5Qrcode(cameraElementId);
+  }
+  return html5QrCode;
+}
 
 // =============================
 // Gestion des onglets
@@ -113,17 +118,16 @@ function initScanView() {
 function startCameraScan() {
   const cameraError = document.getElementById("cameraError");
   const videoBox = document.getElementById("videoBox");
-  const cameraElementId = "camera";
 
   cameraError.hidden = true;
 
+  // Déjà en cours → on ne relance pas
   if (isCameraRunning) return;
 
+  // Affiche la zone vidéo
   videoBox.hidden = false;
 
-  if (!html5QrCode) {
-    html5QrCode = new Html5Qrcode(cameraElementId);
-  }
+  const qr = ensureHtml5QrCodeInstance();
 
   Html5Qrcode.getCameras()
     .then((devices) => {
@@ -136,12 +140,9 @@ function startCameraScan() {
       );
       const cameraId = backCamera ? backCamera.id : devices[0].id;
 
-      return html5QrCode.start(
+      return qr.start(
         cameraId,
-        {
-          fps: 10,
-          qrbox: 250
-        },
+        { fps: 10, qrbox: 250 },
         (decodedText) => {
           handleQrDecoded(decodedText);
           stopCameraScan();
@@ -164,6 +165,8 @@ function startCameraScan() {
 
 // Arrêt du scan caméra
 function stopCameraScan() {
+  const videoBox = document.getElementById("videoBox");
+
   if (html5QrCode && isCameraRunning) {
     html5QrCode
       .stop()
@@ -175,7 +178,6 @@ function stopCameraScan() {
       });
   }
 
-  const videoBox = document.getElementById("videoBox");
   videoBox.hidden = true;
 }
 
@@ -187,19 +189,31 @@ function scanQrFromFile(file) {
   const cameraError = document.getElementById("cameraError");
   cameraError.hidden = true;
 
-  const tempScanner = new Html5Qrcode("camera");
-  tempScanner
-    .scanFile(file, false)
-    .then((decodedText) => {
-      handleQrDecoded(decodedText);
-      tempScanner.clear();
-    })
-    .catch((err) => {
-      cameraError.textContent =
-        "Impossible de lire le QR depuis le fichier : " + (err?.message || err);
-      cameraError.hidden = false;
-      tempScanner.clear();
-    });
+  try {
+    const qr = ensureHtml5QrCodeInstance();
+
+    if (isCameraRunning) {
+      stopCameraScan();
+    }
+
+    qr
+      .scanFile(file, false)
+      .then((decodedText) => {
+        handleQrDecoded(decodedText);
+        // Nettoyage de l'instance pour éviter les blocages
+        qr.clear();
+        html5QrCode = null;
+      })
+      .catch((err) => {
+        cameraError.textContent =
+          "Impossible de lire le QR depuis le fichier : " + (err?.message || err);
+        cameraError.hidden = false;
+      });
+  } catch (err) {
+    cameraError.textContent =
+      "Erreur lors de l'initialisation du lecteur de fichier : " + (err?.message || err);
+    cameraError.hidden = false;
+  }
 }
 
 // ------------------------------------------------------
@@ -211,10 +225,7 @@ function handleQrDecoded(decodedText) {
   try {
     json = JSON.parse(decodedText);
   } catch (e) {
-    alert(
-      "Le QR code ne contient pas un JSON valide.
-Détail : " + e.message
-    );
+    alert("Le QR code ne contient pas un JSON valide.\nDétail : " + e.message);
     return;
   }
 
@@ -250,15 +261,15 @@ function renderFicheMeta() {
   } = currentFiche;
 
   const lines = [];
-  if (categorie) lines.push(`<strong>${escapeHtml(categorie)}</strong>`);
-  if (titre) lines.push(`<span>${escapeHtml(titre)}</span>`);
-  if (objectif) lines.push(`<br><em>${escapeHtml(objectif)}</em>`);
+  if (categorie) lines.push("<strong>" + escapeHtml(categorie) + "</strong>");
+  if (titre) lines.push("<span>" + escapeHtml(titre) + "</span>");
+  if (objectif) lines.push("<br><em>" + escapeHtml(objectif) + "</em>");
   if (version || date_maj || concepteur) {
     const metaParts = [];
-    if (version) metaParts.push(`Version ${escapeHtml(version)}`);
-    if (date_maj) metaParts.push(`MAJ : ${escapeHtml(date_maj)}`);
-    if (concepteur) metaParts.push(`Concepteur : ${escapeHtml(concepteur)}`);
-    lines.push(`<br><span>${metaParts.join(" — ")}</span>`);
+    if (version) metaParts.push("Version " + escapeHtml(version));
+    if (date_maj) metaParts.push("MAJ : " + escapeHtml(date_maj));
+    if (concepteur) metaParts.push("Concepteur : " + escapeHtml(concepteur));
+    lines.push("<br><span>" + metaParts.join(" — ") + "</span>");
   }
 
   ficheMeta.innerHTML = lines.join(" ");
@@ -293,7 +304,7 @@ function renderVariablesForm() {
 
     const labelEl = document.createElement("label");
     labelEl.className = "variable-label";
-    labelEl.setAttribute("for", `var-${id}`);
+    labelEl.setAttribute("for", "var-" + id);
     labelEl.textContent = label || id;
 
     if (obligatoire) {
@@ -315,7 +326,7 @@ function renderVariablesForm() {
       inputEl.type = "text";
     }
 
-    inputEl.id = `var-${id}`;
+    inputEl.id = "var-" + id;
     inputEl.dataset.varId = id;
     inputEl.dataset.varObligatoire = String(obligatoire);
     inputEl.placeholder = placeholder || "";
@@ -323,7 +334,7 @@ function renderVariablesForm() {
     inputEl.addEventListener("input", () => {
       currentVariablesValues[id] =
         inputEl.type === "file"
-          ? inputEl.files?.[0]?.name || ""
+          ? (inputEl.files && inputEl.files[0] && inputEl.files[0].name) || ""
           : inputEl.value;
       updatePromptPreview();
     });
@@ -349,7 +360,7 @@ function buildPrompt() {
     currentFiche.variables.forEach((v) => {
       if (!v.id) return;
       const value = currentVariablesValues[v.id] || "";
-      const placeholder = new RegExp(`{{\s*${escapeRegex(v.id)}\s*}}`, "g");
+      const placeholder = new RegExp("{{\s*" + escapeRegex(v.id) + "\s*}}", "g");
       prompt = prompt.replace(placeholder, value);
     });
   }
@@ -357,9 +368,7 @@ function buildPrompt() {
   const infosComplementaires = document.getElementById("infosComplementaires");
   const extra = infosComplementaires.value.trim();
   if (extra) {
-    prompt += `
-
-Informations complémentaires : ${extra}`;
+    prompt += "\n\nInformations complémentaires : " + extra;
   }
 
   return prompt;
@@ -377,8 +386,8 @@ function updatePromptPreview(scrollToPrompt = false) {
       "Veuillez remplir tous les champs obligatoires avant d'utiliser les IA."
     );
   } else {
-    const indices = currentFiche?.indices_confiance || null;
-    setIaButtonsState(indices);
+    const indices = currentFiche && currentFiche.indices_confiance;
+    setIaButtonsState(indices || null);
   }
 
   if (scrollToPrompt) {
@@ -472,13 +481,13 @@ function openIa(iaKey) {
 
   switch (iaKey) {
     case "chatgpt":
-      url = `https://chatgpt.com/?q=${encoded}`;
+      url = "https://chatgpt.com/?q=" + encoded;
       break;
     case "perplexity":
-      url = `https://www.perplexity.ai/search?q=${encoded}`;
+      url = "https://www.perplexity.ai/search?q=" + encoded;
       break;
     case "mistral":
-      url = `https://chat.mistral.ai/chat?q=${encoded}`;
+      url = "https://chat.mistral.ai/chat?q=" + encoded;
       break;
     default:
       console.warn("IA inconnue :", iaKey);
@@ -648,23 +657,27 @@ function generateJsonAndQr() {
     if (!label && !id) return;
 
     if (!label) {
-      errors.push(`Variable #${index + 1} : le label est obligatoire.`);
+      errors.push("Variable #" + (index + 1) + " : le label est obligatoire.");
     }
     if (!id) {
-      errors.push(`Variable #${index + 1} : l'identifiant est obligatoire.`);
+      errors.push("Variable #" + (index + 1) + " : l'identifiant est obligatoire.");
     }
     if (id && ids.has(id)) {
       errors.push(
-        `Variable #${index + 1} : l'identifiant "${id}" est déjà utilisé.`
+        'Variable #' +
+        (index + 1) +
+        ' : l\'identifiant "' +
+        id +
+        '" est déjà utilisé.'
       );
     }
     if (id) ids.add(id);
 
     variables.push({
-      id,
-      label,
-      type,
-      obligatoire
+      id: id,
+      label: label,
+      type: type,
+      obligatoire: obligatoire
     });
   });
 
@@ -676,18 +689,18 @@ function generateJsonAndQr() {
 
   const ficheObject = {
     categorie: categorie || undefined,
-    titre,
-    objectif,
-    variables,
-    prompt,
+    titre: titre,
+    objectif: objectif,
+    variables: variables,
+    prompt: prompt,
     indices_confiance: {
       chatgpt: Number(indiceChatgpt),
       perplexity: Number(indicePerplexity),
       mistral: Number(indiceMistral)
     },
-    concepteur,
+    concepteur: concepteur,
     date_maj: dateMaj || undefined,
-    version
+    version: version
   };
 
   const cleaned = removeUndefined(ficheObject);
@@ -697,15 +710,15 @@ function generateJsonAndQr() {
 
   const jsonMinified = JSON.stringify(cleaned);
 
-  // Vérifie la présence de la librairie QRCode
   if (typeof QRCode !== "function") {
-    alert("La librairie QRCode n'est pas disponible. Vérifiez le chargement du script qrcodejs.");
+    alert(
+      "La librairie QRCode n'est pas disponible. Vérifiez le chargement du script qrcodejs."
+    );
     return;
   }
 
-  // Génère le QR code dans l'élément dont l'id est "generatedQr"
   qrContainer.innerHTML = "";
-  generatedQrInstance = new QRCode("generatedQr", {
+  new QRCode("generatedQr", {
     text: jsonMinified,
     width: 200,
     height: 200
@@ -744,7 +757,7 @@ function escapeHtml(str) {
 }
 
 function escapeRegex(str) {
-  return String(str).replace(/[.*+?^${}()|[\]\]/g, "\$&");
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function removeUndefined(obj) {
