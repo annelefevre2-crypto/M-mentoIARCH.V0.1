@@ -786,6 +786,41 @@ function downloadGeneratedQr() {
   link.click();
 }
 
+  // Conversion d'un JSON "compact" (pour le QR) en JSON "long" (utilisé par l'app)
+function expandCompactSchema(compact) {
+  const variables = Array.isArray(compact.v)
+    ? compact.v.map((v) => ({
+        id: v.i,
+        label: v.l,
+        type: v.t,
+        obligatoire: v.o
+      }))
+    : [];
+
+  const indices = compact.ic
+    ? {
+        chatgpt: compact.ic.c,
+        perplexity: compact.ic.p,
+        mistral: compact.ic.m
+      }
+    : undefined;
+
+  const full = {
+    categorie: compact.c,
+    titre: compact.ti,
+    objectif: compact.obj,
+    variables,
+    prompt: compact.pr,
+    indices_confiance: indices,
+    concepteur: compact.cp,
+    date_maj: compact.d,
+    version: compact.ve
+  };
+
+  return removeUndefined(full);
+}
+
+
 // =============================
 // Utilitaires
 // =============================
