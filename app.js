@@ -1,18 +1,19 @@
 // ======================================================
 // Mémento opérationnel IA – RCH
-// app.js — Version 0.2
+// app.js — Version 0.3
 // ------------------------------------------------------
-// Modifications par rapport à V0.1 :
-//  - libellé de l'onglet création : "Création de fiche"
-//  - ajout d'un en-tête de colonnes pour les variables
-//  - correction de la génération du QR code (utilisation de l'id "generatedQr")
+// Modifs V0.3 :
+//  - Une seule instance globale Html5Qrcode utilisée pour
+//    la caméra ET la lecture de fichier image
+//  - Scan fichier : plus de conflit d'ID, gestion propre
+//  - Comportement caméra inchangé côté interface
 // ------------------------------------------------------
 
 // =============================
 // Variables globales
 // =============================
 
-let html5QrCode = null;          // Instance html5-qrcode pour la caméra
+let html5QrCode = null;          // Instance html5-qrcode pour la caméra / fichiers
 let isCameraRunning = false;     // Indique si la caméra est active
 let currentFiche = null;         // Fiche courante (JSON issu du QR)
 let currentVariablesValues = {}; // Valeurs saisies des variables
@@ -27,6 +28,18 @@ document.addEventListener("DOMContentLoaded", () => {
   initScanView();
   initCreateView();
 });
+
+// ------------------------------------------------------
+// Helper : s'assure qu'on a une instance Html5Qrcode
+// ------------------------------------------------------
+
+function ensureHtml5QrCodeInstance() {
+  const cameraElementId = "camera";
+  if (!html5QrCode) {
+    html5QrCode = new Html5Qrcode(cameraElementId);
+  }
+  return html5QrCode;
+}
 
 // =============================
 // Gestion des onglets
@@ -113,17 +126,17 @@ function initScanView() {
 function startCameraScan() {
   const cameraError = document.getElementById("cameraError");
   const videoBox = document.getElementById("videoBox");
-  const cameraElementId = "camera";
 
   cameraError.hidden = true;
 
+  // Déjà en cours → on ne relance pas
   if (isCameraRunning) return;
 
+  // Affiche la zone vidéo
   videoBox.hidden = false;
 
-  if (!html5QrCode) {
-    html5QrCode = new Html5Qrcode(cameraElementId);
-  }
+  // Instance globale unique
+  const qr = ensureHtml5QrCodeInstance();
 
   Html5Qrcode.getCameras()
     .then((devices) => {
@@ -131,22 +144,25 @@ function startCameraScan() {
         throw new Error("Aucune caméra disponible.");
       }
 
+      // Choix de la caméra arrière si possible
       const backCamera = devices.find((d) =>
         d.label.toLowerCase().includes("back")
       );
       const cameraId = backCamera ? backCamera.id : devices[0].id;
 
-      return html5QrCode.start(
+      return qr.start(
         cameraId,
         {
           fps: 10,
           qrbox: 250
         },
         (decodedText) => {
+          // Lecture réussie → on traite le QR et on arrête la caméra
           handleQrDecoded(decodedText);
           stopCameraScan();
         },
         (errorMessage) => {
+          // Erreurs de lecture "normales" par frame
           console.debug("Erreur scan frame:", errorMessage);
         }
       );
@@ -164,6 +180,8 @@ function startCameraScan() {
 
 // Arrêt du scan caméra
 function stopCameraScan() {
+  const videoBox = document.getElementById("videoBox");
+
   if (html5QrCode && isCameraRunning) {
     html5QrCode
       .stop()
@@ -175,7 +193,6 @@ function stopCameraScan() {
       });
   }
 
-  const videoBox = document.getElementById("videoBox");
   videoBox.hidden = true;
 }
 
@@ -187,19 +204,33 @@ function scanQrFromFile(file) {
   const cameraError = document.getElementById("cameraError");
   cameraError.hidden = true;
 
-  const tempScanner = new Html5Qrcode("camera");
-  tempScanner
-    .scanFile(file, false)
-    .then((decodedText) => {
-      handleQrDecoded(decodedText);
-      tempScanner.clear();
-    })
-    .catch((err) => {
-      cameraError.textContent =
-        "Impossible de lire le QR depuis le fichier : " + (err?.message || err);
-      cameraError.hidden = false;
-      tempScanner.clear();
-    });
+  try {
+    // On réutilise la même instance globale
+    const qr = ensureHtml5QrCodeInstance();
+
+    // Si la caméra scanne encore, on l'arrête
+    if (isCameraRunning) {
+      stopCameraScan();
+    }
+
+    qr
+      .scanFile(file, false)
+      .then((decodedText) => {
+        handleQrDecoded(decodedText);
+        // Nettoie l'état interne pour éviter les conflits ultérieurs
+        qr.clear();
+        html5QrCode = null;
+      })
+      .catch((err) => {
+        cameraError.textContent =
+          "Impossible de lire le QR depuis le fichier : " + (err?.message || err);
+        cameraError.hidden = false;
+      });
+  } catch (err) {
+    cameraError.textContent =
+      "Erreur lors de l'initialisation du lecteur de fichier : " + (err?.message || err);
+    cameraError.hidden = false;
+  }
 }
 
 // ------------------------------------------------------
@@ -357,9 +388,7 @@ function buildPrompt() {
   const infosComplementaires = document.getElementById("infosComplementaires");
   const extra = infosComplementaires.value.trim();
   if (extra) {
-    prompt += `
-
-Informations complémentaires : ${extra}`;
+    prompt += `\n\nInformations complémentaires : ${extra}`;
   }
 
   return prompt;
@@ -697,13 +726,11 @@ function generateJsonAndQr() {
 
   const jsonMinified = JSON.stringify(cleaned);
 
-  // Vérifie la présence de la librairie QRCode
   if (typeof QRCode !== "function") {
     alert("La librairie QRCode n'est pas disponible. Vérifiez le chargement du script qrcodejs.");
     return;
   }
 
-  // Génère le QR code dans l'élément dont l'id est "generatedQr"
   qrContainer.innerHTML = "";
   generatedQrInstance = new QRCode("generatedQr", {
     text: jsonMinified,
@@ -744,7 +771,7 @@ function escapeHtml(str) {
 }
 
 function escapeRegex(str) {
-  return String(str).replace(/[.*+?^${}()|[\]\]/g, "\$&");
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function removeUndefined(obj) {
