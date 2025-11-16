@@ -1,6 +1,6 @@
 // ======================================================
 // Mémento opérationnel IA – RCH
-// app.js — Version 0.3.1
+// app.js — Version 0.3.5
 // ------------------------------------------------------
 // - Instance unique Html5Qrcode (caméra + fichier)
 // - Scan fichier et scan caméra unifiés
