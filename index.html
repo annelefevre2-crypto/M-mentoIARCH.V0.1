@@ -47,7 +47,7 @@
           Lire une fiche (scan QR)
         </button>
         <button class="tab-button" data-tab="create">
-          Créer une fiche / QR
+          Création de fiche
         </button>
       </div>
 
@@ -164,7 +164,7 @@
               </div>
               <div class="form-field">
                 <label for="createVersion">Version</label>
-                <input id="createVersion" type="text" placeholder="ex : V1.0" />
+                <input id="createVersion" type="text" placeholder="ex : V0.2" />
               </div>
             </div>
           </div>
@@ -201,7 +201,16 @@
 
           <div class="card-section">
             <h2 class="section-title">Variables (max. 10)</h2>
-            <div id="variablesBuilder"></div>
+            <div class="variables-table">
+              <div class="variables-header">
+                <span>Label</span>
+                <span>Identifiant</span>
+                <span>Type</span>
+                <span>Obligatoire</span>
+                <span></span>
+              </div>
+              <div id="variablesBuilder"></div>
+            </div>
             <button id="addVariableBtn" class="btn btn-secondary">
               Ajouter une variable
             </button>
@@ -246,7 +255,7 @@
 
     <!-- Pied de page -->
     <footer class="app-footer">
-      © ENSOSP — Cne Eddy Fischer – Cdt Anne Tirelle — v5.0.0
+      © ENSOSP — Cne Eddy Fischer – Cdt Anne Tirelle — v0.2
     </footer>
   </div>
 
