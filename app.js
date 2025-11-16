@@ -229,6 +229,11 @@ function handleQrDecoded(decodedText) {
     return;
   }
 
+  // Détection du schéma compact : présence de "ti" ou "v" sans "titre"
+  if (json && json.ti && !json.titre) {
+    json = expandCompactSchema(json);
+  }
+
   currentFiche = json;
   currentVariablesValues = {};
 
@@ -237,6 +242,7 @@ function handleQrDecoded(decodedText) {
   updatePromptPreview();
   setIaButtonsState(currentFiche.indices_confiance || null);
 }
+
 
 // ------------------------------------------------------
 // Affichage du résumé de la fiche (titre, objectif...)
